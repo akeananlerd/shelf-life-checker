@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shelf Life Checker</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #eef2f7;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef } = React;
+
+    function ShelfLifeChecker() {
+      const [conditionType, setConditionType] = useState('months');
+      const [conditionValue, setConditionValue] = useState('');
+      const [mfgDate, setMfgDate]   = useState('');
+      const [shelfLifeYears, setShelfLifeYears] = useState('');
+      const [expDate, setExpDate]   = useState('');
+      const [result, setResult]     = useState(null);
+
+      const mfgRef = useRef(null);
+      const expRef = useRef(null);
+
+      const toDisplay = (yyyymmdd) => {
+        if (!yyyymmdd) return '';
+        const [y, m, d] = yyyymmdd.split('-');
+        return `${d}/${m}/${y}`;
+      };
+
+      const parseLocal = (yyyymmdd) => {
+        const [y, m, d] = yyyymmdd.split('-').map(Number);
+        return new Date(y, m - 1, d);
+      };
+
+      const toYMD = (dateObj) => {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      };
+
+      const addMonths = (dateObj, months) => {
+        const d = new Date(dateObj);
+        d.setMonth(d.getMonth() + months);
+        return d;
+      };
+
+      const today = () => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d;
+      };
+
+      const handleCheck = () => {
+        const now   = today();
+        const cval  = parseFloat(conditionValue);
+
+        /* ── Case 1: เดือน ── */
+        if (conditionType === 'months') {
+          if (!conditionValue) { alert('กรุณาระบุจำนวนเดือน'); return; }
+          const minExp = addMonths(now, cval);
+          minExp.setDate(minExp.getDate() - 1);
+          setResult({ case: '1', minExpDate: toDisplay(toYMD(minExp)) });
+          return;
+        }
+
+        /* ── Case 2: % ── */
+        if (conditionType === 'percentage') {
+          if (!conditionValue) { alert('กรุณาระบุ %'); return; }
+
+          // 2.1 MFG + EXP
+          if (mfgDate && expDate) {
+            const mfg  = parseLocal(mfgDate);
+            const exp  = parseLocal(expDate);
+            const totalDays     = (exp - mfg) / 86400000;
+            const remainingDays = (exp - now) / 86400000;
+            const pct  = (remainingDays / totalDays) * 100;
+            setResult({
+              case: '2.1',
+              remainingDays: Math.floor(remainingDays),
+              pct: pct.toFixed(1),
+              passed: pct >= cval,
+              conditionValue: cval,
+            });
+            return;
+          }
+
+          // 2.2 Shelf Life เท่านั้น
+          if (!mfgDate && !expDate && shelfLifeYears) {
+            const totalDays    = parseInt(shelfLifeYears) * 365;
+            const requiredDays = Math.ceil(totalDays * (cval / 100));
+            const minExp = new Date(now);
+            minExp.setDate(minExp.getDate() + requiredDays - 1);
+            setResult({
+              case: '2.2',
+              minExpDate: toDisplay(toYMD(minExp)),
+              conditionValue: cval,
+            });
+            return;
+          }
+
+          // 2.3 MFG + Shelf Life
+          if (mfgDate && shelfLifeYears && !expDate) {
+            const mfg       = parseLocal(mfgDate);
+            const totalDays = parseInt(shelfLifeYears) * 365;
+            const exp       = new Date(mfg);
+            exp.setDate(exp.getDate() + totalDays - 1);
+            const remainingDays = (exp - now) / 86400000;
+            const pct = (remainingDays / totalDays) * 100;
+            setResult({
+              case: '2.3',
+              mfgDisplay: toDisplay(mfgDate),
+              expDisplay: toDisplay(toYMD(exp)),
+              remainingDays: Math.floor(remainingDays),
+              pct: pct.toFixed(1),
+              passed: pct >= cval,
+              conditionValue: cval,
+            });
+            return;
+          }
+
+          alert('กรุณากรอกข้อมูลให้ตรงกับเงื่อนไขที่ต้องการคำนวณ');
+        }
+      };
+
+      const handleReset = () => {
+        setConditionType('months');
+        setConditionValue('');
+        setMfgDate('');
+        setShelfLifeYears('');
+        setExpDate('');
+        setResult(null);
+      };
+
+      /* ── styles ── */
+      const card = {
+        width: '100%', maxWidth: '480px', backgroundColor: '#fff',
+        borderRadius: '12px', padding: '24px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+      };
+      const field = { marginBottom: '16px' };
+      const lbl   = { display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#444' };
+      const inp   = {
+        width: '100%', padding: '9px 12px', fontSize: '14px',
+        border: '1px solid #d0d5dd', borderRadius: '8px',
+        backgroundColor: '#fff', outline: 'none',
+      };
+      const fakeDate = (hasVal) => ({
+        ...inp,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        cursor: 'pointer', color: hasVal ? '#333' : '#aaa',
+      });
+      const hiddenDate = {
+        position: 'absolute', opacity: 0,
+        width: '100%', height: '100%', top: 0, left: 0, cursor: 'pointer',
+      };
+      const hint = {
+        backgroundColor: '#fff8e1', border: '1px solid #ffe082',
+        borderRadius: '8px', padding: '10px 14px',
+        marginBottom: '16px', fontSize: '13px', color: '#666', lineHeight: '1.7',
+      };
+
+      const resultBg     = (p) => p ? '#d4edda' : '#f8d7da';
+      const resultBorder = (p) => p ? '#28a745' : '#f5c6cb';
+      const resultColor  = (p) => p ? '#155724' : '#721c24';
+      const infoBg = '#e7f3ff';
+      const infoBorder = '#b3d9ff';
+      const infoColor = '#004085';
+
+      const isInfo = result && (result.case === '1' || result.case === '2.2');
+
+      return (
+        <div style={card}>
+          {/* Header */}
+          <h1 style={{ textAlign: 'center', fontSize: '20px', color: '#1a1a2e', marginBottom: '20px' }}>
+            📦 Shelf Life Checker
+          </h1>
+
+          {/* เงื่อนไขลูกค้า */}
+          <div style={field}>
+            <label style={lbl}>เงื่อนไขของลูกค้า</label>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '10px', fontSize: '14px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input type="radio" value="months" checked={conditionType === 'months'}
+                  onChange={(e) => { setConditionType(e.target.value); setResult(null); }} />
+                เดือน
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input type="radio" value="percentage" checked={conditionType === 'percentage'}
+                  onChange={(e) => { setConditionType(e.target.value); setResult(null); }} />
+                % ของ Shelf Life
+              </label>
+            </div>
+            <input type="number" style={inp} min="0"
+              placeholder={conditionType === 'months' ? 'จำนวนเดือนขั้นต่ำ เช่น 6' : '% ขั้นต่ำ เช่น 70'}
+              value={conditionValue}
+              onChange={(e) => { setConditionValue(e.target.value); setResult(null); }} />
+          </div>
+
+          {/* % section */}
+          {conditionType === 'percentage' && (
+            <>
+              <div style={hint}>
+                <strong>เลือกกรอกข้อมูลตามกรณีที่ต้องการ:</strong><br />
+                • <b>2.1</b> กรอก MFG + EXP → เช็ค % คงเหลือ<br />
+                • <b>2.2</b> เลือก Shelf Life เท่านั้น → คำนวณ EXP ขั้นต่ำ<br />
+                • <b>2.3</b> กรอก MFG + เลือก Shelf Life → เช็คว่าส่งได้ไหม
+              </div>
+
+              {/* MFG */}
+              <div style={field}>
+                <label style={lbl}>วันทำการผลิต (MFG)</label>
+                <div style={{ position: 'relative' }}>
+                  <div style={fakeDate(mfgDate)} onClick={() => mfgRef.current?.showPicker()}>
+                    <span>{mfgDate ? toDisplay(mfgDate) : 'DD/MM/YYYY'}</span>
+                    <span>📅</span>
+                  </div>
+                  <input ref={mfgRef} type="date" style={hiddenDate}
+                    value={mfgDate} onChange={(e) => { setMfgDate(e.target.value); setResult(null); }} />
+                </div>
+              </div>
+
+              {/* Shelf Life */}
+              <div style={field}>
+                <label style={lbl}>Shelf Life</label>
+                <select style={inp} value={shelfLifeYears}
+                  onChange={(e) => { setShelfLifeYears(e.target.value); setResult(null); }}>
+                  <option value="">เลือก Shelf Life...</option>
+                  <option value="1">1 ปี</option>
+                  <option value="2">2 ปี</option>
+                  <option value="3">3 ปี</option>
+                  <option value="4">4 ปี</option>
+                </select>
+              </div>
+
+              {/* EXP */}
+              <div style={field}>
+                <label style={lbl}>Exp Date</label>
+                <div style={{ position: 'relative' }}>
+                  <div style={fakeDate(expDate)} onClick={() => expRef.current?.showPicker()}>
+                    <span>{expDate ? toDisplay(expDate) : 'DD/MM/YYYY'}</span>
+                    <span>📅</span>
+                  </div>
+                  <input ref={expRef} type="date" style={hiddenDate}
+                    value={expDate} onChange={(e) => { setExpDate(e.target.value); setResult(null); }} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+            <button onClick={handleCheck} style={{
+              flex: 1, padding: '12px', backgroundColor: '#007bff', color: '#fff',
+              border: 'none', borderRadius: '8px', fontWeight: 'bold',
+              cursor: 'pointer', fontSize: '15px',
+            }}>✓ ตรวจสอบ</button>
+            <button onClick={handleReset} style={{
+              flex: 1, padding: '12px', backgroundColor: '#6c757d', color: '#fff',
+              border: 'none', borderRadius: '8px', fontWeight: 'bold',
+              cursor: 'pointer', fontSize: '15px',
+            }}>🔄 Reset</button>
+          </div>
+
+          {/* Result */}
+          {result && (
+            <div style={{
+              padding: '16px', borderRadius: '8px',
+              backgroundColor: isInfo ? infoBg : resultBg(result.passed),
+              border: `1px solid ${isInfo ? infoBorder : resultBorder(result.passed)}`,
+            }}>
+              {result.case === '1' && (
+                <p style={{ fontSize: '16px', fontWeight: 'bold', color: infoColor }}>
+                  Exp ต้องไม่น้อยกว่า: {result.minExpDate}
+                </p>
+              )}
+              {result.case === '2.1' && (
+                <>
+                  <p style={{ fontSize: '14px', marginBottom: '8px', color: '#444' }}>
+                    คงเหลือ <strong>{result.remainingDays}</strong> วัน
+                    &nbsp;({result.pct}% ของ shelf life)
+                  </p>
+                  <p style={{ fontSize: '16px', fontWeight: 'bold', color: resultColor(result.passed) }}>
+                    {result.passed
+                      ? `✅ ผ่านเงื่อนไข (≥ ${result.conditionValue}%)`
+                      : `❌ ไม่ผ่านเงื่อนไข (< ${result.conditionValue}%)`}
+                  </p>
+                </>
+              )}
+              {result.case === '2.2' && (
+                <p style={{ fontSize: '16px', fontWeight: 'bold', color: infoColor }}>
+                  Exp ต้องไม่น้อยกว่า: {result.minExpDate}
+                </p>
+              )}
+              {result.case === '2.3' && (
+                <>
+                  <p style={{ fontSize: '13px', color: '#555', marginBottom: '6px' }}>
+                    MFG: {result.mfgDisplay} → Exp คาด: {result.expDisplay}
+                  </p>
+                  <p style={{ fontSize: '14px', marginBottom: '8px', color: '#444' }}>
+                    คงเหลือ <strong>{result.remainingDays}</strong> วัน
+                    &nbsp;({result.pct}% ของ shelf life)
+                  </p>
+                  <p style={{ fontSize: '16px', fontWeight: 'bold', color: resultColor(result.passed) }}>
+                    {result.passed
+                      ? `✅ ส่งสินค้าได้ (≥ ${result.conditionValue}%)`
+                      : `❌ ส่งสินค้าไม่ได้ (< ${result.conditionValue}%)`}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<ShelfLifeChecker />);
+  </script>
+</body>
+</html>
